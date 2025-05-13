@@ -1,0 +1,556 @@
+import * as THREE from 'three';
+import { Car } from '../entities/Car';
+import { GameState } from './GameState';
+import { Menu } from './Menu';
+import { MapThemes } from '../entities/MapThemes';
+import { Mountains } from '../entities/Mountains';
+import { RandomEncounters } from '../entities/RandomEncounters';
+import { Weather } from '../effects/Weather';
+
+export class Game {
+    constructor() {
+        this.clock = new THREE.Clock();
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.car = null;
+        this.collisionObjects = []; // Store objects for collision detection
+        this.gameState = new GameState();
+        this.coinMeshes = [];
+        this.isGameStarted = false;
+        this.isCountdownActive = false;
+        this.countdownValue = 3;
+        
+        // Initialize systems
+        this.mountains = null;
+        this.randomEncounters = null;
+        this.weather = null;
+    }
+
+    async init() {
+        console.log('Initializing game...');
+        
+        // Setup renderer
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(this.renderer.domElement);
+
+        // Setup scene
+        this.setupLights();
+        this.setupEnvironment();
+        this.setupCoins();
+        this.setupUI();
+
+        // Initialize systems
+        console.log('Initializing mountains...');
+        this.mountains = new Mountains(this.scene, 62.5); // Using track radius
+        
+        console.log('Initializing random encounters...');
+        this.randomEncounters = new RandomEncounters(this.scene, 62.5);
+        
+        console.log('Initializing weather...');
+        this.weather = new Weather(this.scene);
+
+        // Initialize car with game instance
+        this.car = new Car(this, this.camera);
+
+        // Setup menu
+        this.menu = new Menu(this);
+
+        // Setup event listeners
+        window.addEventListener('resize', this.onWindowResize.bind(this));
+
+        // Set initial map theme
+        this.updateMapTheme(MapThemes.getTheme('dayZone'));
+        
+        console.log('Game initialization complete');
+    }
+
+    setupLights() {
+        // Ambient light
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+        this.scene.add(ambientLight);
+
+        // Directional light (sun)
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(50, 50, 50);
+        directionalLight.castShadow = true;
+        
+        // Improve shadow quality
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        directionalLight.shadow.camera.near = 0.5;
+        directionalLight.shadow.camera.far = 500;
+        directionalLight.shadow.camera.left = -100;
+        directionalLight.shadow.camera.right = 100;
+        directionalLight.shadow.camera.top = 100;
+        directionalLight.shadow.camera.bottom = -100;
+        
+        this.scene.add(directionalLight);
+
+        // Add hemisphere light for better ambient lighting
+        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+        this.scene.add(hemisphereLight);
+    }
+
+    setupEnvironment() {
+        // Create ground with increased size
+        const groundGeometry = new THREE.PlaneGeometry(1500, 1500); // Increased from 1000 to 1500 (50% larger)
+        const groundMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x3a7e4f,
+            roughness: 0.8,
+            metalness: 0.2
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        this.scene.add(ground);
+
+        // Add road
+        this.createRoad();
+        
+        // Add environment props
+        this.addEnvironmentProps();
+    }
+
+    createRoad() {
+        // Create a larger circular road with increased width
+        const roadGeometry = new THREE.RingGeometry(75, 112.5, 128); // Increased from 50,75 to 75,112.5 (50% bigger, 30% wider)
+        const roadMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x333333,
+            roughness: 0.9,
+            metalness: 0.1
+        });
+        const road = new THREE.Mesh(roadGeometry, roadMaterial);
+        road.rotation.x = -Math.PI / 2;
+        road.position.y = 0.01;
+        road.receiveShadow = true;
+        this.scene.add(road);
+
+        // Add road markings
+        const markingGeometry = new THREE.RingGeometry(91.5, 96, 128); // Adjusted marking position for new road size
+        const markingMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0xffffff,
+            roughness: 0.8,
+            metalness: 0.2
+        });
+        const marking = new THREE.Mesh(markingGeometry, markingMaterial);
+        marking.rotation.x = -Math.PI / 2;
+        marking.position.y = 0.02;
+        this.scene.add(marking);
+
+        // Add road texture
+        const textureLoader = new THREE.TextureLoader();
+        const roadTexture = textureLoader.load('https://threejs.org/examples/textures/terrain/grasslight-big.jpg');
+        roadTexture.wrapS = THREE.RepeatWrapping;
+        roadTexture.wrapT = THREE.RepeatWrapping;
+        roadTexture.repeat.set(25, 25);
+        roadMaterial.map = roadTexture;
+    }
+
+    createTree(x, z) {
+        const treeGroup = new THREE.Group();
+        
+        // Create trunk
+        const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.7, 4, 8);
+        const trunkMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x4d2926,
+            roughness: 0.9,
+            metalness: 0.1
+        });
+        const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+        trunk.castShadow = true;
+        treeGroup.add(trunk);
+
+        // Create foliage (multiple layers for more realistic look)
+        const foliageMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x2d5a27,
+            roughness: 0.8,
+            metalness: 0.1
+        });
+
+        // Bottom layer
+        const bottomFoliage = new THREE.Mesh(
+            new THREE.ConeGeometry(3, 4, 8),
+            foliageMaterial
+        );
+        bottomFoliage.position.y = 3;
+        bottomFoliage.castShadow = true;
+        treeGroup.add(bottomFoliage);
+
+        // Middle layer
+        const middleFoliage = new THREE.Mesh(
+            new THREE.ConeGeometry(2.5, 3, 8),
+            foliageMaterial
+        );
+        middleFoliage.position.y = 5;
+        middleFoliage.castShadow = true;
+        treeGroup.add(middleFoliage);
+
+        // Top layer
+        const topFoliage = new THREE.Mesh(
+            new THREE.ConeGeometry(2, 2, 8),
+            foliageMaterial
+        );
+        topFoliage.position.y = 6.5;
+        topFoliage.castShadow = true;
+        treeGroup.add(topFoliage);
+
+        treeGroup.position.set(x, 0, z);
+        
+        // Add collision data
+        this.collisionObjects.push({
+            position: new THREE.Vector3(x, 0, z),
+            radius: 3, // Collision radius for trees
+            type: 'tree'
+        });
+        
+        return treeGroup;
+    }
+
+    createBush(x, z) {
+        const bushGroup = new THREE.Group();
+        
+        // Create multiple spheres for a more natural bush look
+        const bushMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x2d5a27,
+            roughness: 0.8,
+            metalness: 0.1
+        });
+
+        // Create 3-5 spheres of different sizes
+        const numSpheres = 3 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < numSpheres; i++) {
+            const radius = 0.5 + Math.random() * 0.5;
+            const sphere = new THREE.Mesh(
+                new THREE.SphereGeometry(radius, 8, 8),
+                bushMaterial
+            );
+            sphere.position.set(
+                (Math.random() - 0.5) * 1.5,
+                radius,
+                (Math.random() - 0.5) * 1.5
+            );
+            sphere.castShadow = true;
+            bushGroup.add(sphere);
+        }
+
+        bushGroup.position.set(x, 0, z);
+        
+        // Add collision data
+        this.collisionObjects.push({
+            position: new THREE.Vector3(x, 0, z),
+            radius: 1.5, // Collision radius for bushes
+            type: 'bush'
+        });
+        
+        return bushGroup;
+    }
+
+    addEnvironmentProps() {
+        // Add trees around the track
+        const numTrees = 150; // Increased number of trees
+        for (let i = 0; i < numTrees; i++) {
+            const angle = (i / numTrees) * Math.PI * 2;
+            const radius = 180 + Math.random() * 90; // Increased radius for trees
+            const x = Math.cos(angle) * radius;
+            const z = Math.sin(angle) * radius;
+            
+            const tree = this.createTree(x, z);
+            this.scene.add(tree);
+        }
+
+        // Add random trees in the center
+        for (let i = 0; i < 30; i++) { // Increased number of center trees
+            const angle = Math.random() * Math.PI * 2;
+            const radius = Math.random() * 67.5; // Increased radius for center trees
+            const x = Math.cos(angle) * radius;
+            const z = Math.sin(angle) * radius;
+            
+            const tree = this.createTree(x, z);
+            this.scene.add(tree);
+        }
+
+        // Add bushes
+        const numBushes = 300; // Increased number of bushes
+        for (let i = 0; i < numBushes; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 157.5 + Math.random() * 112.5; // Increased radius for bushes
+            const x = Math.cos(angle) * radius;
+            const z = Math.sin(angle) * radius;
+            
+            const bush = this.createBush(x, z);
+            this.scene.add(bush);
+        }
+
+        // Add some rocks
+        const numRocks = 75; // Increased number of rocks
+        for (let i = 0; i < numRocks; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 168.75 + Math.random() * 101.25; // Increased radius for rocks
+            const x = Math.cos(angle) * radius;
+            const z = Math.sin(angle) * radius;
+            
+            const rockGeometry = new THREE.DodecahedronGeometry(0.5 + Math.random() * 0.5);
+            const rockMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x808080,
+                roughness: 0.9,
+                metalness: 0.1
+            });
+            const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+            rock.position.set(x, 0.25, z);
+            rock.rotation.set(
+                Math.random() * Math.PI,
+                Math.random() * Math.PI,
+                Math.random() * Math.PI
+            );
+            rock.castShadow = true;
+            this.scene.add(rock);
+            
+            // Add collision data for rocks
+            this.collisionObjects.push({
+                position: new THREE.Vector3(x, 0, z),
+                radius: 1,
+                type: 'rock'
+            });
+        }
+    }
+
+    setupCoins() {
+        this.gameState.setupCoins();
+        
+        // Create coin meshes
+        const coinGeometry = new THREE.CylinderGeometry(0.5, 0.5, 0.1, 16);
+        const coinMaterial = new THREE.MeshStandardMaterial({
+            color: 0xFFD700,
+            metalness: 0.8,
+            roughness: 0.2,
+            emissive: 0xFFD700,
+            emissiveIntensity: 0.2
+        });
+
+        this.gameState.coins.forEach(coin => {
+            const coinMesh = new THREE.Mesh(coinGeometry, coinMaterial);
+            coinMesh.position.set(coin.position.x, 1, coin.position.z);
+            coinMesh.rotation.x = Math.PI / 2;
+            this.scene.add(coinMesh);
+            this.coinMeshes.push(coinMesh);
+        });
+    }
+
+    setupUI() {
+        // Create countdown overlay
+        this.countdownOverlay = document.createElement('div');
+        this.countdownOverlay.style.position = 'absolute';
+        this.countdownOverlay.style.top = '50%';
+        this.countdownOverlay.style.left = '50%';
+        this.countdownOverlay.style.transform = 'translate(-50%, -50%)';
+        this.countdownOverlay.style.fontSize = '120px';
+        this.countdownOverlay.style.fontFamily = 'Arial, sans-serif';
+        this.countdownOverlay.style.color = 'white';
+        this.countdownOverlay.style.textShadow = '0 0 20px rgba(0,0,0,0.5)';
+        this.countdownOverlay.style.display = 'none';
+        document.body.appendChild(this.countdownOverlay);
+
+        // Create regular UI elements
+        this.uiContainer = document.createElement('div');
+        this.uiContainer.style.position = 'absolute';
+        this.uiContainer.style.top = '20px';
+        this.uiContainer.style.left = '20px';
+        this.uiContainer.style.color = 'white';
+        this.uiContainer.style.fontFamily = 'Arial, sans-serif';
+        this.uiContainer.style.fontSize = '20px';
+        this.uiContainer.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
+        this.uiContainer.style.display = 'none';
+        document.body.appendChild(this.uiContainer);
+
+        // Create UI elements
+        this.timeElement = document.createElement('div');
+        this.scoreElement = document.createElement('div');
+        this.lapElement = document.createElement('div');
+        this.coinsElement = document.createElement('div');
+
+        this.uiContainer.appendChild(this.timeElement);
+        this.uiContainer.appendChild(this.scoreElement);
+        this.uiContainer.appendChild(this.lapElement);
+        this.uiContainer.appendChild(this.coinsElement);
+
+        // Create scoreboard
+        this.scoreboard = document.createElement('div');
+        this.scoreboard.style.display = 'none';
+        this.scoreboard.style.position = 'absolute';
+        this.scoreboard.style.top = '50%';
+        this.scoreboard.style.left = '50%';
+        this.scoreboard.style.transform = 'translate(-50%, -50%)';
+        this.scoreboard.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        this.scoreboard.style.padding = '30px';
+        this.scoreboard.style.borderRadius = '15px';
+        this.scoreboard.style.color = 'white';
+        this.scoreboard.style.fontFamily = 'Arial, sans-serif';
+        this.scoreboard.style.textAlign = 'center';
+        this.scoreboard.style.minWidth = '300px';
+        this.scoreboard.style.boxShadow = '0 0 20px rgba(0, 0, 0, 0.5)';
+
+        // Add scoreboard elements
+        this.scoreboardTitle = document.createElement('h2');
+        this.scoreboardTitle.style.fontSize = '32px';
+        this.scoreboardTitle.style.marginBottom = '20px';
+        this.scoreboardTitle.style.color = '#FFD700';
+
+        this.finalScoreElement = document.createElement('div');
+        this.finalScoreElement.style.fontSize = '24px';
+        this.finalScoreElement.style.marginBottom = '15px';
+
+        this.coinsCollectedElement = document.createElement('div');
+        this.coinsCollectedElement.style.fontSize = '20px';
+        this.coinsCollectedElement.style.marginBottom = '15px';
+
+        this.lapsCompletedElement = document.createElement('div');
+        this.lapsCompletedElement.style.fontSize = '20px';
+        this.lapsCompletedElement.style.marginBottom = '20px';
+
+        this.restartButton = document.createElement('button');
+        this.restartButton.textContent = 'Play Again';
+        this.restartButton.style.padding = '10px 20px';
+        this.restartButton.style.fontSize = '18px';
+        this.restartButton.style.backgroundColor = '#4CAF50';
+        this.restartButton.style.color = 'white';
+        this.restartButton.style.border = 'none';
+        this.restartButton.style.borderRadius = '5px';
+        this.restartButton.style.cursor = 'pointer';
+        this.restartButton.style.transition = 'background-color 0.3s';
+        this.restartButton.onmouseover = () => this.restartButton.style.backgroundColor = '#45a049';
+        this.restartButton.onmouseout = () => this.restartButton.style.backgroundColor = '#4CAF50';
+        this.restartButton.onclick = () => window.location.reload();
+
+        this.scoreboard.appendChild(this.scoreboardTitle);
+        this.scoreboard.appendChild(this.finalScoreElement);
+        this.scoreboard.appendChild(this.coinsCollectedElement);
+        this.scoreboard.appendChild(this.lapsCompletedElement);
+        this.scoreboard.appendChild(this.restartButton);
+
+        document.body.appendChild(this.scoreboard);
+    }
+
+    startGame() {
+        this.isCountdownActive = true;
+        this.countdownValue = 3;
+        this.countdownOverlay.style.display = 'block';
+        this.countdownOverlay.textContent = this.countdownValue;
+        
+        const countdownInterval = setInterval(() => {
+            this.countdownValue--;
+            if (this.countdownValue > 0) {
+                this.countdownOverlay.textContent = this.countdownValue;
+            } else if (this.countdownValue === 0) {
+                this.countdownOverlay.textContent = 'GO!';
+            } else {
+                clearInterval(countdownInterval);
+                this.countdownOverlay.style.display = 'none';
+                this.isGameStarted = true;
+                this.uiContainer.style.display = 'block';
+                this.gameState.startGame();
+                // Update car color from menu selection
+                if (this.car) {
+                    this.car.updateColor(this.menu.getSelectedColor());
+                }
+            }
+        }, 1000);
+    }
+
+    updateUI() {
+        const timeRemaining = this.gameState.getTimeRemaining();
+        const score = this.gameState.getScore();
+        const progress = this.gameState.getProgress();
+        const laps = this.gameState.laps;
+
+        this.timeElement.textContent = `Time: ${timeRemaining.toFixed(1)}s`;
+        this.scoreElement.textContent = `Score: ${score}`;
+        this.lapElement.textContent = `Lap: ${laps + 1}/2`;
+        this.coinsElement.textContent = `Coins: ${this.gameState.coinsCollected}/${this.gameState.totalCoins}`;
+
+        // Update coin meshes
+        this.coinMeshes.forEach((mesh, index) => {
+            const coin = this.gameState.coins[index];
+            if (coin.collected) {
+                mesh.visible = false;
+            } else {
+                mesh.visible = true;
+                mesh.rotation.y += 0.05; // Rotate coins
+            }
+        });
+
+        // Check for game over
+        if (this.gameState.isGameOver()) {
+            this.scoreboard.style.display = 'block';
+            this.scoreboardTitle.textContent = 'Game Over!';
+            this.finalScoreElement.textContent = `Final Score: ${score}`;
+            this.coinsCollectedElement.textContent = `Total Coins Collected: ${this.gameState.coinsCollected * 2}`; // Multiply by 2 for both laps
+            this.lapsCompletedElement.textContent = `Laps Completed: ${laps}/2`;
+        }
+    }
+
+    update(deltaTime) {
+        if (this.car && this.isGameStarted && !this.gameState.isGameOver()) {
+            this.car.update(deltaTime);
+            this.gameState.update(deltaTime, this.car.carGroup.position);
+            
+            // Update systems
+            if (this.mountains) {
+                this.mountains.update(deltaTime);
+            }
+            if (this.randomEncounters) {
+                this.randomEncounters.update(deltaTime);
+            }
+            if (this.weather) {
+                this.weather.update(deltaTime);
+            }
+            
+            this.updateUI();
+        }
+    }
+
+    render() {
+        this.renderer.render(this.scene, this.camera);
+    }
+
+    onWindowResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // Add method to get collision objects
+    getCollisionObjects() {
+        return this.collisionObjects;
+    }
+
+    updateMapTheme(theme) {
+        // Update scene background
+        this.scene.background = new THREE.Color(theme.skyColor);
+
+        // Update ground color
+        if (this.ground) {
+            this.ground.material.color.set(theme.groundColor);
+        }
+
+        // Update lighting
+        if (this.ambientLight) {
+            this.ambientLight.color.set(theme.ambientLight);
+        }
+
+        if (this.directionalLight) {
+            this.directionalLight.color.set(theme.directionalLight.color);
+            this.directionalLight.intensity = theme.directionalLight.intensity;
+            this.directionalLight.position.copy(theme.directionalLight.position);
+        }
+
+        // Update fog
+        this.scene.fog = new THREE.Fog(
+            theme.fog.color,
+            theme.fog.near,
+            theme.fog.far
+        );
+    }
+} 
