@@ -1,10 +1,6 @@
 export class GameState {
     constructor() {
         this.score = 0;
-        this.laps = 0;
-        this.maxLaps = 2;
-        this.lapTime = 60; // Changed from 30 to 60 seconds
-        this.timeRemaining = this.lapTime;
         this.coins = [];
         this.coinsCollected = 0;
         this.totalCoins = 20;
@@ -19,8 +15,6 @@ export class GameState {
         this.isGameStarted = true;
         this.gameOver = false;
         this.score = 0;
-        this.laps = 0;
-        this.timeRemaining = this.lapTime;
         this.coinsCollected = 0;
         // Reset coins
         this.coins.forEach(coin => coin.collected = false);
@@ -52,15 +46,6 @@ export class GameState {
     update(deltaTime, carPosition) {
         if (this.gameOver) return;
 
-        // Update lap time
-        this.timeRemaining -= deltaTime;
-
-        // Check for lap time limit
-        if (this.timeRemaining <= 0) {
-            this.gameOver = true;
-            return;
-        }
-
         // Check for coin collection
         this.checkCoinCollection(carPosition);
     }
@@ -83,26 +68,8 @@ export class GameState {
 
         // Check if all coins are collected
         if (this.coinsCollected === this.totalCoins) {
-            this.completeLap();
-        }
-    }
-
-    completeLap() {
-        this.laps++;
-        this.timeRemaining = this.lapTime;
-        this.coinsCollected = 0;
-        
-        // Reset coins for next lap
-        this.coins.forEach(coin => coin.collected = false);
-
-        // Check if game is complete
-        if (this.laps >= this.maxLaps) {
             this.gameOver = true;
         }
-    }
-
-    getTimeRemaining() {
-        return Math.max(0, this.timeRemaining);
     }
 
     getScore() {

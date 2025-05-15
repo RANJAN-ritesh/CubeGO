@@ -107,6 +107,9 @@ export class Game {
         ground.receiveShadow = true;
         this.scene.add(ground);
 
+        // Add pond in the middle
+        this.createPond();
+
         // Add road
         this.createRoad();
         
@@ -248,6 +251,114 @@ export class Game {
         return bushGroup;
     }
 
+    createPond() {
+        // Pond geometry and material
+        const pondRadius = 30;
+        const pondGeometry = new THREE.CircleGeometry(pondRadius, 64);
+        const pondMaterial = new THREE.MeshStandardMaterial({
+            color: 0x4fc3f7,
+            roughness: 0.3,
+            metalness: 0.7,
+            transparent: true,
+            opacity: 0.85
+        });
+        const pond = new THREE.Mesh(pondGeometry, pondMaterial);
+        pond.rotation.x = -Math.PI / 2;
+        pond.position.set(0, 0.05, 0);
+        pond.receiveShadow = true;
+        this.scene.add(pond);
+        this.pond = pond;
+
+        // Add lotus flowers
+        for (let i = 0; i < 7; i++) {
+            const angle = (i / 7) * Math.PI * 2;
+            const r = pondRadius * 0.6 + Math.random() * pondRadius * 0.3;
+            const x = Math.cos(angle) * r * 0.7;
+            const z = Math.sin(angle) * r * 0.7;
+            this.createLotus(x, z);
+        }
+
+        // Add fish
+        this.fishGroup = new THREE.Group();
+        for (let i = 0; i < 5; i++) {
+            this.createFish(pondRadius);
+        }
+        this.scene.add(this.fishGroup);
+    }
+
+    createLotus(x, z) {
+        // Lotus base (leaf)
+        const leafGeometry = new THREE.CircleGeometry(2.2, 24);
+        const leafMaterial = new THREE.MeshStandardMaterial({
+            color: 0x6ecb77,
+            roughness: 0.7,
+            metalness: 0.2
+        });
+        const leaf = new THREE.Mesh(leafGeometry, leafMaterial);
+        leaf.rotation.x = -Math.PI / 2;
+        leaf.position.set(x, 0.06, z);
+        this.scene.add(leaf);
+
+        // Lotus flower (petals)
+        const petalGeometry = new THREE.ConeGeometry(0.5, 1.2, 8);
+        const petalMaterial = new THREE.MeshStandardMaterial({
+            color: 0xf8bbd0,
+            roughness: 0.5,
+            metalness: 0.5
+        });
+        for (let i = 0; i < 6; i++) {
+            const petal = new THREE.Mesh(petalGeometry, petalMaterial);
+            const angle = (i / 6) * Math.PI * 2;
+            petal.position.set(
+                x + Math.cos(angle) * 0.8,
+                0.15,
+                z + Math.sin(angle) * 0.8
+            );
+            petal.rotation.x = -Math.PI / 2;
+            petal.rotation.z = angle;
+            this.scene.add(petal);
+        }
+        // Lotus center
+        const centerGeometry = new THREE.SphereGeometry(0.25, 12, 12);
+        const centerMaterial = new THREE.MeshStandardMaterial({ color: 0xfff176 });
+        const center = new THREE.Mesh(centerGeometry, centerMaterial);
+        center.position.set(x, 0.25, z);
+        this.scene.add(center);
+    }
+
+    createFish(pondRadius) {
+        // Fish body
+        const fishGroup = new THREE.Group();
+        const bodyGeometry = new THREE.SphereGeometry(1, 12, 12);
+        const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xffb300, metalness: 0.7, roughness: 0.3 });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        body.scale.set(1.2, 0.7, 0.7);
+        fishGroup.add(body);
+        // Tail
+        const tailGeometry = new THREE.ConeGeometry(0.4, 1, 8);
+        const tailMaterial = new THREE.MeshStandardMaterial({ color: 0xff7043 });
+        const tail = new THREE.Mesh(tailGeometry, tailMaterial);
+        tail.position.set(-1.1, 0, 0);
+        tail.rotation.z = Math.PI / 2;
+        fishGroup.add(tail);
+        // Eyes
+        const eyeGeometry = new THREE.SphereGeometry(0.12, 8, 8);
+        const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
+        const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+        leftEye.position.set(0.5, 0.2, 0.3);
+        const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+        rightEye.position.set(0.5, 0.2, -0.3);
+        fishGroup.add(leftEye);
+        fishGroup.add(rightEye);
+        // Random position in pond
+        const angle = Math.random() * Math.PI * 2;
+        const r = Math.random() * (pondRadius * 0.7);
+        fishGroup.position.set(Math.cos(angle) * r, 0.2, Math.sin(angle) * r);
+        // Animate fish
+        fishGroup.userData = { angle, r, speed: 0.3 + Math.random() * 0.3, phase: Math.random() * Math.PI * 2 };
+        this.fishGroup.add(fishGroup);
+    }
+
     addEnvironmentProps() {
         // Add trees around the track
         const numTrees = 150; // Increased number of trees
@@ -256,7 +367,8 @@ export class Game {
             const radius = 180 + Math.random() * 90; // Increased radius for trees
             const x = Math.cos(angle) * radius;
             const z = Math.sin(angle) * radius;
-            
+            // Avoid placing trees on the pond
+            if (Math.sqrt(x * x + z * z) < 40) continue;
             const tree = this.createTree(x, z);
             this.scene.add(tree);
         }
@@ -267,7 +379,8 @@ export class Game {
             const radius = Math.random() * 67.5; // Increased radius for center trees
             const x = Math.cos(angle) * radius;
             const z = Math.sin(angle) * radius;
-            
+            // Avoid placing trees on the pond
+            if (Math.sqrt(x * x + z * z) < 40) continue;
             const tree = this.createTree(x, z);
             this.scene.add(tree);
         }
@@ -366,15 +479,74 @@ export class Game {
         document.body.appendChild(this.uiContainer);
 
         // Create UI elements
-        this.timeElement = document.createElement('div');
         this.scoreElement = document.createElement('div');
-        this.lapElement = document.createElement('div');
-        this.coinsElement = document.createElement('div');
+        this.speedElement = document.createElement('div');
+        this.nitroElement = document.createElement('div');
+        this.nitroBar = document.createElement('div');
+        this.nitroBarFill = document.createElement('div');
 
-        this.uiContainer.appendChild(this.timeElement);
+        // Style speedometer with digital display
+        this.speedElement.style.position = 'absolute';
+        this.speedElement.style.bottom = '20px';
+        this.speedElement.style.right = '20px';
+        this.speedElement.style.fontSize = '32px';
+        this.speedElement.style.fontWeight = 'bold';
+        this.speedElement.style.color = '#00ff00';
+        this.speedElement.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
+        this.speedElement.style.backgroundColor = 'rgba(0,0,0,0.7)';
+        this.speedElement.style.padding = '15px 25px';
+        this.speedElement.style.borderRadius = '10px';
+        this.speedElement.style.fontFamily = 'Digital, Arial, sans-serif';
+        this.speedElement.style.border = '2px solid #00ff00';
+        this.speedElement.style.boxShadow = '0 0 10px rgba(0,255,0,0.3)';
+        document.body.appendChild(this.speedElement);
+
+        // Style nitro meter container
+        this.nitroElement.style.position = 'absolute';
+        this.nitroElement.style.bottom = '20px';
+        this.nitroElement.style.right = '180px'; // Moved closer to speedometer
+        this.nitroElement.style.width = '60px';
+        this.nitroElement.style.height = '150px';
+        this.nitroElement.style.backgroundColor = 'rgba(0,0,0,0.7)';
+        this.nitroElement.style.padding = '15px';
+        this.nitroElement.style.borderRadius = '10px';
+        this.nitroElement.style.border = '2px solid #0088ff';
+        this.nitroElement.style.boxShadow = '0 0 10px rgba(0,136,255,0.3)';
+        this.nitroElement.style.display = 'flex';
+        this.nitroElement.style.flexDirection = 'column';
+        this.nitroElement.style.alignItems = 'center';
+        document.body.appendChild(this.nitroElement);
+
+        // Style nitro label
+        const nitroLabel = document.createElement('div');
+        nitroLabel.textContent = 'NITRO';
+        nitroLabel.style.color = '#0088ff';
+        nitroLabel.style.fontSize = '16px';
+        nitroLabel.style.fontWeight = 'bold';
+        nitroLabel.style.marginBottom = '10px';
+        nitroLabel.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
+        this.nitroElement.appendChild(nitroLabel);
+
+        // Style nitro bar background
+        this.nitroBar.style.width = '20px';
+        this.nitroBar.style.height = '100px';
+        this.nitroBar.style.backgroundColor = 'rgba(0,136,255,0.2)';
+        this.nitroBar.style.borderRadius = '10px';
+        this.nitroBar.style.overflow = 'hidden';
+        this.nitroBar.style.position = 'relative';
+        this.nitroElement.appendChild(this.nitroBar);
+
+        // Style nitro bar fill
+        this.nitroBarFill.style.width = '100%';
+        this.nitroBarFill.style.height = '100%';
+        this.nitroBarFill.style.backgroundColor = '#0088ff';
+        this.nitroBarFill.style.transition = 'height 0.1s ease-out';
+        this.nitroBarFill.style.boxShadow = '0 0 10px rgba(0,136,255,0.5)';
+        this.nitroBarFill.style.position = 'absolute';
+        this.nitroBarFill.style.bottom = '0';
+        this.nitroBar.appendChild(this.nitroBarFill);
+
         this.uiContainer.appendChild(this.scoreElement);
-        this.uiContainer.appendChild(this.lapElement);
-        this.uiContainer.appendChild(this.coinsElement);
 
         // Create scoreboard
         this.scoreboard = document.createElement('div');
@@ -460,15 +632,73 @@ export class Game {
     }
 
     updateUI() {
-        const timeRemaining = this.gameState.getTimeRemaining();
         const score = this.gameState.getScore();
         const progress = this.gameState.getProgress();
-        const laps = this.gameState.laps;
 
-        this.timeElement.textContent = `Time: ${timeRemaining.toFixed(1)}s`;
         this.scoreElement.textContent = `Score: ${score}`;
-        this.lapElement.textContent = `Lap: ${laps + 1}/2`;
-        this.coinsElement.textContent = `Coins: ${this.gameState.coinsCollected}/${this.gameState.totalCoins}`;
+        // this.coinsElement.textContent = `Coins: ${this.gameState.coinsCollected}/${this.gameState.totalCoins}`; // Commented out to remove coins display
+
+        // Update speedometer with digital display
+        const speed = Math.abs(this.car.speed);
+        const speedColor = speed > this.car.maxSpeed * 0.8 ? '#ff0000' : '#00ff00';
+        this.speedElement.style.color = speedColor;
+        this.speedElement.style.borderColor = speedColor;
+        this.speedElement.style.boxShadow = `0 0 10px ${speedColor}40`;
+        this.speedElement.innerHTML = `
+            <div style="font-size: 14px; margin-bottom: 5px;">SPEED</div>
+            <div style="font-size: 36px;">${speed.toFixed(1)}</div>
+            <div style="font-size: 14px;">km/h</div>
+        `;
+
+        // Update nitro meter with visual bar
+        const nitroPercent = this.car.boostCooldown > 0 ? 
+            (this.car.boostCooldown / this.car.boostCooldownTime) * 100 : 
+            (this.car.boostTime / this.car.boostDuration) * 100;
+        
+        const nitroColor = this.car.isBoosting ? '#00aaff' : '#0088ff';
+        this.nitroBarFill.style.backgroundColor = nitroColor;
+        this.nitroBarFill.style.height = `${nitroPercent}%`;
+        
+        // Add pulse and shimmer animation styles if not present
+        if (!document.querySelector('#nitroPulseShimmer')) {
+            const style = document.createElement('style');
+            style.id = 'nitroPulseShimmer';
+            style.textContent = `
+                @keyframes pulse {
+                    0% { opacity: 1; }
+                    50% { opacity: 0.7; }
+                    100% { opacity: 1; }
+                }
+                @keyframes shimmer {
+                    0% { background-position: -40px 0; }
+                    100% { background-position: 40px 0; }
+                }
+                @keyframes blink {
+                    0%, 100% { filter: brightness(1.2); }
+                    50% { filter: brightness(2.2); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Nitro recharge shimmer
+        if (!this.car.isBoosting && nitroPercent < 100 && this.car.boostCooldown <= 0) {
+            this.nitroBarFill.style.backgroundImage = 'linear-gradient(90deg, #0088ff 60%, #66ccff 80%, #0088ff 100%)';
+            this.nitroBarFill.style.backgroundSize = '40px 100%';
+            this.nitroBarFill.style.animation = 'shimmer 1s linear infinite';
+        } else if (nitroPercent >= 100) {
+            // Full nitro blink
+            this.nitroBarFill.style.backgroundImage = '';
+            this.nitroBarFill.style.animation = 'blink 0.7s steps(1, end) infinite';
+        } else if (this.car.isBoosting) {
+            // Nitro in use, keep pulse
+            this.nitroBarFill.style.backgroundImage = '';
+            this.nitroBarFill.style.animation = 'pulse 0.5s infinite';
+        } else {
+            // Default
+            this.nitroBarFill.style.backgroundImage = '';
+            this.nitroBarFill.style.animation = 'none';
+        }
 
         // Update coin meshes
         this.coinMeshes.forEach((mesh, index) => {
@@ -484,10 +714,10 @@ export class Game {
         // Check for game over
         if (this.gameState.isGameOver()) {
             this.scoreboard.style.display = 'block';
-            this.scoreboardTitle.textContent = 'Game Over!';
+            this.scoreboardTitle.textContent = 'Exploration Complete!';
             this.finalScoreElement.textContent = `Final Score: ${score}`;
-            this.coinsCollectedElement.textContent = `Total Coins Collected: ${this.gameState.coinsCollected * 2}`; // Multiply by 2 for both laps
-            this.lapsCompletedElement.textContent = `Laps Completed: ${laps}/2`;
+            this.coinsCollectedElement.textContent = `Total Coins Collected: ${this.gameState.coinsCollected}`;
+            this.lapsCompletedElement.style.display = 'none'; // Hide laps element
         }
     }
 
@@ -505,6 +735,18 @@ export class Game {
             }
             if (this.weather) {
                 this.weather.update(deltaTime);
+            }
+            
+            // Animate fish
+            if (this.fishGroup) {
+                this.fishGroup.children.forEach(fish => {
+                    const d = fish.userData;
+                    d.angle += d.speed * deltaTime * 0.3;
+                    fish.position.x = Math.cos(d.angle) * d.r;
+                    fish.position.z = Math.sin(d.angle) * d.r;
+                    fish.position.y = 0.2 + Math.sin(Date.now() * 0.002 + d.phase) * 0.1;
+                    fish.rotation.y = -d.angle + Math.PI / 2;
+                });
             }
             
             this.updateUI();

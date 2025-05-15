@@ -22,8 +22,8 @@ export class Mountains {
         this.terrainSize = trackRadius * 4.5;
         this.terrainResolution = 128;
         
-        // Load textures
-        this.loadTextures();
+        // Initialize textures with fallback colors
+        this.initializeTextures();
         
         console.log('Starting terrain and mountain generation...');
         this.generateTerrain();
@@ -33,26 +33,65 @@ export class Mountains {
         console.log('Number of mountains created:', this.mountains.length);
     }
 
-    loadTextures() {
+    initializeTextures() {
         const textureLoader = new THREE.TextureLoader();
         
-        // Mountain textures
-        this.mountainTexture = textureLoader.load('https://threejs.org/examples/textures/terrain/grasslight-big.jpg');
-        this.mountainTexture.wrapS = THREE.RepeatWrapping;
-        this.mountainTexture.wrapT = THREE.RepeatWrapping;
-        this.mountainTexture.repeat.set(4, 4);
+        // Default colors for fallback
+        const defaultGrassColor = 0x4CAF50;
+        const defaultSnowColor = 0xFFFFFF;
+        const defaultRockColor = 0x808080;
         
-        // Snow texture
-        this.snowTexture = textureLoader.load('https://threejs.org/examples/textures/terrain/snow.jpg');
-        this.snowTexture.wrapS = THREE.RepeatWrapping;
-        this.snowTexture.wrapT = THREE.RepeatWrapping;
-        this.snowTexture.repeat.set(2, 2);
+        // Mountain textures with fallback colors
+        this.mountainTexture = this.createTextureWithFallback(
+            textureLoader,
+            '/textures/terrain/grass.jpg',
+            defaultGrassColor
+        );
         
-        // Rock texture
-        this.rockTexture = textureLoader.load('https://threejs.org/examples/textures/terrain/rock.jpg');
-        this.rockTexture.wrapS = THREE.RepeatWrapping;
-        this.rockTexture.wrapT = THREE.RepeatWrapping;
-        this.rockTexture.repeat.set(1, 1);
+        // Snow texture with fallback color
+        this.snowTexture = this.createTextureWithFallback(
+            textureLoader,
+            '/textures/terrain/snow.jpg',
+            defaultSnowColor
+        );
+        
+        // Rock texture with fallback color
+        this.rockTexture = this.createTextureWithFallback(
+            textureLoader,
+            '/textures/terrain/rock.jpg',
+            defaultRockColor
+        );
+    }
+
+    createTextureWithFallback(loader, path, fallbackColor) {
+        const texture = new THREE.Texture();
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(4, 4);
+        
+        // Try to load the texture, but use fallback color if it fails
+        loader.load(
+            path,
+            (loadedTexture) => {
+                texture.image = loadedTexture.image;
+                texture.needsUpdate = true;
+            },
+            undefined,
+            () => {
+                console.warn(`Failed to load texture: ${path}, using fallback color`);
+                // Create a 1x1 canvas with the fallback color
+                const canvas = document.createElement('canvas');
+                canvas.width = 1;
+                canvas.height = 1;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#' + fallbackColor.toString(16).padStart(6, '0');
+                ctx.fillRect(0, 0, 1, 1);
+                texture.image = canvas;
+                texture.needsUpdate = true;
+            }
+        );
+        
+        return texture;
     }
 
     generateTerrain() {

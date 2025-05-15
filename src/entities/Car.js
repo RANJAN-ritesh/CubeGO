@@ -76,6 +76,10 @@ export class Car {
         
         // Add combat effects
         this.setupCombatEffects();
+
+        this.isDrowning = false;
+        this.drownTimer = 0;
+        this.drownDepth = -3;
     }
 
     setInitialPosition() {
@@ -528,6 +532,11 @@ export class Car {
     }
 
     update(deltaTime) {
+        // Drown check
+        if (this.checkDrowning()) {
+            this.handleDrowning(deltaTime);
+            return;
+        }
         this.handleMovement(deltaTime);
         this.handleSteering(deltaTime);
         this.updateWheels(deltaTime);
@@ -564,16 +573,22 @@ export class Car {
         const input = this.inputHandler.getInput();
         
         // Handle boost
-        if (input.shift && this.boostCooldown <= 0) {
+        if (input.shift && this.boostCooldown <= 0 && !this.isBoosting && this.boostTime >= this.boostDuration) {
             this.isBoosting = true;
-            this.boostTime = this.boostDuration;
+            this.boostTime = 0;
             this.boostCooldown = this.boostCooldownTime;
         }
 
+        // Nitro usage
         if (this.isBoosting) {
-            this.boostTime -= deltaTime;
-            if (this.boostTime <= 0) {
+            this.boostTime += deltaTime;
+            if (this.boostTime >= this.boostDuration) {
                 this.isBoosting = false;
+            }
+        } else {
+            // Always recharge nitro when not boosting
+            if (this.boostTime > 0) {
+                this.boostTime = Math.max(0, this.boostTime - deltaTime);
             }
         }
 
@@ -769,8 +784,8 @@ export class Car {
         const collisionAngle = Math.atan2(collisionVector.z, collisionVector.x);
         this.carGroup.rotation.y = collisionAngle;
 
-        // Notify game state of collision
-        this.game.gameState.handleCollision();
+        // Add visual feedback for collision
+        this.showImpactEffect(this.carGroup.position.clone());
     }
 
     updateColor(color) {
@@ -838,313 +853,6 @@ export class Car {
         this.boostMultiplier = stats.boostMultiplier;
         this.boostDuration = stats.boostDuration;
         this.boostCooldownTime = stats.boostCooldown;
-    }
-
-    handleCollision() {
-        if (this.game && this.game.gameState) {
-            this.game.gameState.handleCollision();
-        } else {
-            // Fallback collision handling if game state is not available
-            this.speed *= 0.5;
-            this.carGroup.rotation.y += (Math.random() - 0.5) * Math.PI / 4;
-        }
-    }
-
-    createSUV() {
-        const suvGroup = new THREE.Group();
-        suvGroup.name = 'SUV';
-
-        // Main body
-        const bodyGeometry = new THREE.BoxGeometry(2.2, 1.2, 4.5);
-        const bodyMaterial = new THREE.MeshStandardMaterial({
-            color: 0x1a1a1a,
-            roughness: 0.3,
-            metalness: 0.8
-        });
-        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-        body.position.y = 1.2;
-        body.castShadow = true;
-        suvGroup.add(body);
-
-        // Roof
-        const roofGeometry = new THREE.BoxGeometry(2, 0.8, 2.5);
-        const roofMaterial = new THREE.MeshStandardMaterial({
-            color: 0x1a1a1a,
-            roughness: 0.3,
-            metalness: 0.8
-        });
-        const roof = new THREE.Mesh(roofGeometry, roofMaterial);
-        roof.position.set(0, 2.2, -0.3);
-        roof.castShadow = true;
-        suvGroup.add(roof);
-
-        // Windows
-        const windowMaterial = new THREE.MeshStandardMaterial({
-            color: 0x88ccff,
-            roughness: 0.1,
-            metalness: 0.9,
-            transparent: true,
-            opacity: 0.7
-        });
-
-        // Front windshield
-        const frontWindshieldGeometry = new THREE.PlaneGeometry(1.8, 1.2);
-        const frontWindshield = new THREE.Mesh(frontWindshieldGeometry, windowMaterial);
-        frontWindshield.position.set(0, 2, 1.8);
-        frontWindshield.rotation.x = Math.PI / 6;
-        suvGroup.add(frontWindshield);
-
-        // Rear windshield
-        const rearWindshieldGeometry = new THREE.PlaneGeometry(1.8, 1.2);
-        const rearWindshield = new THREE.Mesh(rearWindshieldGeometry, windowMaterial);
-        rearWindshield.position.set(0, 2, -2.3);
-        rearWindshield.rotation.x = -Math.PI / 6;
-        suvGroup.add(rearWindshield);
-
-        // Side windows
-        const sideWindowGeometry = new THREE.PlaneGeometry(2.2, 0.8);
-        const leftWindow = new THREE.Mesh(sideWindowGeometry, windowMaterial);
-        leftWindow.position.set(-1.1, 2, 0);
-        leftWindow.rotation.y = Math.PI / 2;
-        suvGroup.add(leftWindow);
-
-        const rightWindow = new THREE.Mesh(sideWindowGeometry, windowMaterial);
-        rightWindow.position.set(1.1, 2, 0);
-        rightWindow.rotation.y = -Math.PI / 2;
-        suvGroup.add(rightWindow);
-
-        // Wheels
-        const wheelGeometry = new THREE.CylinderGeometry(0.5, 0.5, 0.4, 16);
-        const wheelMaterial = new THREE.MeshStandardMaterial({
-            color: 0x333333,
-            roughness: 0.7,
-            metalness: 0.3
-        });
-
-        // Front wheels
-        const frontLeftWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-        frontLeftWheel.position.set(-1.1, 0.5, 1.5);
-        frontLeftWheel.rotation.z = Math.PI / 2;
-        frontLeftWheel.castShadow = true;
-        suvGroup.add(frontLeftWheel);
-
-        const frontRightWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-        frontRightWheel.position.set(1.1, 0.5, 1.5);
-        frontRightWheel.rotation.z = Math.PI / 2;
-        frontRightWheel.castShadow = true;
-        suvGroup.add(frontRightWheel);
-
-        // Rear wheels
-        const rearLeftWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-        rearLeftWheel.position.set(-1.1, 0.5, -1.5);
-        rearLeftWheel.rotation.z = Math.PI / 2;
-        rearLeftWheel.castShadow = true;
-        suvGroup.add(rearLeftWheel);
-
-        const rearRightWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-        rearRightWheel.position.set(1.1, 0.5, -1.5);
-        rearRightWheel.rotation.z = Math.PI / 2;
-        rearRightWheel.castShadow = true;
-        suvGroup.add(rearRightWheel);
-
-        // Headlights
-        const headlightGeometry = new THREE.SphereGeometry(0.2, 16, 16);
-        const headlightMaterial = new THREE.MeshStandardMaterial({
-            color: 0xffffcc,
-            emissive: 0xffffcc,
-            emissiveIntensity: 0.5
-        });
-
-        const leftHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
-        leftHeadlight.position.set(-0.8, 1.2, 2.2);
-        suvGroup.add(leftHeadlight);
-
-        const rightHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
-        rightHeadlight.position.set(0.8, 1.2, 2.2);
-        suvGroup.add(rightHeadlight);
-
-        // Taillights
-        const taillightGeometry = new THREE.BoxGeometry(0.4, 0.2, 0.1);
-        const taillightMaterial = new THREE.MeshStandardMaterial({
-            color: 0xff0000,
-            emissive: 0xff0000,
-            emissiveIntensity: 0.5
-        });
-
-        const leftTaillight = new THREE.Mesh(taillightGeometry, taillightMaterial);
-        leftTaillight.position.set(-0.8, 1.2, -2.2);
-        suvGroup.add(leftTaillight);
-
-        const rightTaillight = new THREE.Mesh(taillightGeometry, taillightMaterial);
-        rightTaillight.position.set(0.8, 1.2, -2.2);
-        suvGroup.add(rightTaillight);
-
-        // Bumpers
-        const bumperGeometry = new THREE.BoxGeometry(2.2, 0.3, 0.5);
-        const bumperMaterial = new THREE.MeshStandardMaterial({
-            color: 0x333333,
-            roughness: 0.5,
-            metalness: 0.5
-        });
-
-        const frontBumper = new THREE.Mesh(bumperGeometry, bumperMaterial);
-        frontBumper.position.set(0, 0.6, 2.2);
-        suvGroup.add(frontBumper);
-
-        const rearBumper = new THREE.Mesh(bumperGeometry, bumperMaterial);
-        rearBumper.position.set(0, 0.6, -2.2);
-        suvGroup.add(rearBumper);
-
-        return suvGroup;
-    }
-
-    createBike() {
-        const bikeGroup = new THREE.Group();
-        bikeGroup.name = 'Bike';
-
-        // Frame
-        const frameGeometry = new THREE.BoxGeometry(0.8, 0.8, 2.5);
-        const frameMaterial = new THREE.MeshStandardMaterial({
-            color: 0x1a1a1a,
-            roughness: 0.3,
-            metalness: 0.8
-        });
-        const frame = new THREE.Mesh(frameGeometry, frameMaterial);
-        frame.position.y = 0.8;
-        frame.castShadow = true;
-        bikeGroup.add(frame);
-
-        // Front wheel
-        const frontWheelGeometry = new THREE.CylinderGeometry(0.5, 0.5, 0.2, 16);
-        const wheelMaterial = new THREE.MeshStandardMaterial({
-            color: 0x333333,
-            roughness: 0.7,
-            metalness: 0.3
-        });
-        const frontWheel = new THREE.Mesh(frontWheelGeometry, wheelMaterial);
-        frontWheel.position.set(0, 0.5, 1.2);
-        frontWheel.rotation.z = Math.PI / 2;
-        frontWheel.castShadow = true;
-        bikeGroup.add(frontWheel);
-
-        // Rear wheel
-        const rearWheel = new THREE.Mesh(frontWheelGeometry, wheelMaterial);
-        rearWheel.position.set(0, 0.5, -1.2);
-        rearWheel.rotation.z = Math.PI / 2;
-        rearWheel.castShadow = true;
-        bikeGroup.add(rearWheel);
-
-        // Handlebars
-        const handlebarGeometry = new THREE.CylinderGeometry(0.05, 0.05, 1.2);
-        const handlebarMaterial = new THREE.MeshStandardMaterial({
-            color: 0x1a1a1a,
-            roughness: 0.3,
-            metalness: 0.8
-        });
-        const handlebars = new THREE.Mesh(handlebarGeometry, handlebarMaterial);
-        handlebars.position.set(0, 1.4, 1.2);
-        handlebars.rotation.x = Math.PI / 2;
-        bikeGroup.add(handlebars);
-
-        // Seat
-        const seatGeometry = new THREE.BoxGeometry(0.4, 0.1, 0.6);
-        const seatMaterial = new THREE.MeshStandardMaterial({
-            color: 0x1a1a1a,
-            roughness: 0.5,
-            metalness: 0.3
-        });
-        const seat = new THREE.Mesh(seatGeometry, seatMaterial);
-        seat.position.set(0, 1.2, -0.5);
-        bikeGroup.add(seat);
-
-        // Headlight
-        const headlightGeometry = new THREE.SphereGeometry(0.15, 16, 16);
-        const headlightMaterial = new THREE.MeshStandardMaterial({
-            color: 0xffffcc,
-            emissive: 0xffffcc,
-            emissiveIntensity: 0.5
-        });
-        const headlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
-        headlight.position.set(0, 1.3, 1.4);
-        bikeGroup.add(headlight);
-
-        // Taillight
-        const taillightGeometry = new THREE.BoxGeometry(0.2, 0.1, 0.05);
-        const taillightMaterial = new THREE.MeshStandardMaterial({
-            color: 0xff0000,
-            emissive: 0xff0000,
-            emissiveIntensity: 0.5
-        });
-        const taillight = new THREE.Mesh(taillightGeometry, taillightMaterial);
-        taillight.position.set(0, 1.1, -1.4);
-        bikeGroup.add(taillight);
-
-        // Front fork
-        const forkGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.8);
-        const forkMaterial = new THREE.MeshStandardMaterial({
-            color: 0x1a1a1a,
-            roughness: 0.3,
-            metalness: 0.8
-        });
-        const frontFork = new THREE.Mesh(forkGeometry, forkMaterial);
-        frontFork.position.set(0, 0.9, 1.2);
-        bikeGroup.add(frontFork);
-
-        // Rear suspension
-        const suspensionGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.6);
-        const suspensionMaterial = new THREE.MeshStandardMaterial({
-            color: 0x1a1a1a,
-            roughness: 0.3,
-            metalness: 0.8
-        });
-        const rearSuspension = new THREE.Mesh(suspensionGeometry, suspensionMaterial);
-        rearSuspension.position.set(0, 0.8, -1.2);
-        rearSuspension.rotation.x = Math.PI / 6;
-        bikeGroup.add(rearSuspension);
-
-        return bikeGroup;
-    }
-
-    // Add method to update sensitivity settings
-    updateSensitivity(settings) {
-        this.sensitivitySettings = {
-            ...this.sensitivitySettings,
-            ...settings
-        };
-    }
-
-    // Add method to get current sensitivity settings
-    getSensitivitySettings() {
-        return { ...this.sensitivitySettings };
-    }
-
-    setupCombatEffects() {
-        // Create impact effect group
-        this.impactGroup = new THREE.Group();
-        this.carGroup.add(this.impactGroup);
-        
-        // Create impact particles
-        const impactCount = 20;
-        const impactGeometry = new THREE.CircleGeometry(0.1, 8);
-        const impactMaterial = new THREE.MeshBasicMaterial({
-            color: 0xff4400,
-            transparent: true,
-            opacity: 0.8,
-            side: THREE.DoubleSide
-        });
-        
-        this.impactParticles = [];
-        for (let i = 0; i < impactCount; i++) {
-            const impact = new THREE.Mesh(impactGeometry, impactMaterial);
-            impact.visible = false;
-            this.impactGroup.add(impact);
-            this.impactParticles.push({
-                mesh: impact,
-                life: 0,
-                maxLife: 0.5,
-                velocity: new THREE.Vector3(0, 0, 0)
-            });
-        }
     }
 
     handleCombat(deltaTime) {
@@ -1304,5 +1012,91 @@ export class Car {
         setTimeout(() => {
             this.carBodyMaterial.color.copy(originalColor);
         }, 200);
+    }
+
+    // Add method to update sensitivity settings
+    updateSensitivity(settings) {
+        this.sensitivitySettings = {
+            ...this.sensitivitySettings,
+            ...settings
+        };
+    }
+
+    // Add method to get current sensitivity settings
+    getSensitivitySettings() {
+        return { ...this.sensitivitySettings };
+    }
+
+    setupCombatEffects() {
+        // Create impact effect group
+        this.impactGroup = new THREE.Group();
+        this.carGroup.add(this.impactGroup);
+        
+        // Create impact particles
+        const impactCount = 20;
+        const impactGeometry = new THREE.CircleGeometry(0.1, 8);
+        const impactMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff4400,
+            transparent: true,
+            opacity: 0.8,
+            side: THREE.DoubleSide
+        });
+        
+        this.impactParticles = [];
+        for (let i = 0; i < impactCount; i++) {
+            const impact = new THREE.Mesh(impactGeometry, impactMaterial);
+            impact.visible = false;
+            this.impactGroup.add(impact);
+            this.impactParticles.push({
+                mesh: impact,
+                life: 0,
+                maxLife: 0.5,
+                velocity: new THREE.Vector3(0, 0, 0)
+            });
+        }
+    }
+
+    checkDrowning() {
+        // Pond center is (0,0), radius is 30 (from Game.js)
+        const pondRadius = 30;
+        const x = this.carGroup.position.x;
+        const z = this.carGroup.position.z;
+        const dist = Math.sqrt(x * x + z * z);
+        if (!this.isDrowning && dist < pondRadius) {
+            this.isDrowning = true;
+            this.drownTimer = 0;
+            return true;
+        }
+        return this.isDrowning;
+    }
+
+    handleDrowning(deltaTime) {
+        this.drownTimer += deltaTime;
+        // Sink the car
+        const sinkSpeed = 2.5; // units per second
+        const minY = this.drownDepth;
+        this.carGroup.position.y = Math.max(minY, this.carGroup.position.y - sinkSpeed * deltaTime);
+        // Slow down
+        this.speed *= 0.95;
+        // Optionally, add bubbles or splash here
+        // After 2 seconds, respawn
+        if (this.drownTimer > 2) {
+            this.respawnOnRoad();
+            this.isDrowning = false;
+            this.carGroup.position.y = 0.4;
+            this.speed = 0;
+        }
+    }
+
+    respawnOnRoad() {
+        // Place car at a random point on the road (radius 90, away from pond)
+        const roadRadius = 90;
+        const angle = Math.random() * Math.PI * 2;
+        this.carGroup.position.set(
+            Math.cos(angle) * roadRadius,
+            0.4,
+            Math.sin(angle) * roadRadius
+        );
+        this.carGroup.rotation.y = angle + Math.PI / 2;
     }
 } 
