@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import { Car } from '../entities/Car';
+import { Character } from '../entities/Character';
 import { GameState } from './GameState';
 import { Menu } from './Menu';
 import { MapThemes } from '../entities/MapThemes';
 import { Mountains } from '../entities/Mountains';
 import { RandomEncounters } from '../entities/RandomEncounters';
 import { Weather } from '../effects/Weather';
+import { MissionManager } from './MissionManager';
+import { MiniMap } from './MiniMap';
 
 export class Game {
     constructor() {
@@ -14,8 +17,10 @@ export class Game {
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.car = null;
+        this.character = null;
+        this.activeVehicle = null;
         this.collisionObjects = []; // Store objects for collision detection
-        this.gameState = new GameState();
+        this.gameState = new GameState(this);
         this.coinMeshes = [];
         this.isGameStarted = false;
         this.isCountdownActive = false;
@@ -25,6 +30,7 @@ export class Game {
         this.mountains = null;
         this.randomEncounters = null;
         this.weather = null;
+        this.miniMap = null;
     }
 
     async init() {
@@ -52,11 +58,18 @@ export class Game {
         console.log('Initializing weather...');
         this.weather = new Weather(this.scene);
 
-        // Initialize car with game instance
+        // Initialize character and car
+        this.character = new Character(this, this.camera);
         this.car = new Car(this, this.camera);
 
         // Setup menu
         this.menu = new Menu(this);
+
+        // Setup missions
+        this.missionManager = new MissionManager(this);
+
+        // Setup minimap
+        this.miniMap = new MiniMap(this);
 
         // Setup event listeners
         window.addEventListener('resize', this.onWindowResize.bind(this));
@@ -623,6 +636,14 @@ export class Game {
                 this.isGameStarted = true;
                 this.uiContainer.style.display = 'block';
                 this.gameState.startGame();
+                // Notify mission manager that game has started
+                if (this.missionManager) {
+                    this.missionManager.onGameStart();
+                }
+                // Show minimap
+                if (this.miniMap) {
+                    this.miniMap.show();
+                }
                 // Update car color from menu selection
                 if (this.car) {
                     this.car.updateColor(this.menu.getSelectedColor());
@@ -639,25 +660,22 @@ export class Game {
         // this.coinsElement.textContent = `Coins: ${this.gameState.coinsCollected}/${this.gameState.totalCoins}`; // Commented out to remove coins display
 
         // Update speedometer with digital display
-        const speed = Math.abs(this.car.speed);
-        const speedColor = speed > this.car.maxSpeed * 0.8 ? '#ff0000' : '#00ff00';
-        this.speedElement.style.color = speedColor;
-        this.speedElement.style.borderColor = speedColor;
-        this.speedElement.style.boxShadow = `0 0 10px ${speedColor}40`;
+        const speed = Math.abs(this.car.speed * 10); // Example: scale to km/h
         this.speedElement.innerHTML = `
             <div style="font-size: 14px; margin-bottom: 5px;">SPEED</div>
-            <div style="font-size: 36px;">${speed.toFixed(1)}</div>
+            <div style="font-size: 36px;">${Math.round(speed)}</div>
             <div style="font-size: 14px;">km/h</div>
         `;
 
         // Update nitro meter with visual bar
-        const nitroPercent = this.car.boostCooldown > 0 ? 
-            (this.car.boostCooldown / this.car.boostCooldownTime) * 100 : 
-            (this.car.boostTime / this.car.boostDuration) * 100;
-        
-        const nitroColor = this.car.isBoosting ? '#00aaff' : '#0088ff';
-        this.nitroBarFill.style.backgroundColor = nitroColor;
-        this.nitroBarFill.style.height = `${nitroPercent}%`;
+        let percentage = 100;
+        if (this.car.isBoosting) {
+            percentage = 100 - (this.car.boostTime / this.car.boostDuration) * 100;
+        } else if (this.car.boostCooldown > 0) {
+            percentage = (this.car.boostCooldown / this.car.boostCooldownTime) * 100;
+        }
+        this.nitroBarFill.style.backgroundColor = percentage > 60 ? '#00ff00' : percentage > 30 ? '#ffff00' : '#ff0000';
+        this.nitroBarFill.style.height = `${percentage}%`;
         
         // Add pulse and shimmer animation styles if not present
         if (!document.querySelector('#nitroPulseShimmer')) {
@@ -682,11 +700,11 @@ export class Game {
         }
 
         // Nitro recharge shimmer
-        if (!this.car.isBoosting && nitroPercent < 100 && this.car.boostCooldown <= 0) {
+        if (!this.car.isBoosting && percentage < 100 && this.car.boostCooldown <= 0) {
             this.nitroBarFill.style.backgroundImage = 'linear-gradient(90deg, #0088ff 60%, #66ccff 80%, #0088ff 100%)';
             this.nitroBarFill.style.backgroundSize = '40px 100%';
             this.nitroBarFill.style.animation = 'shimmer 1s linear infinite';
-        } else if (nitroPercent >= 100) {
+        } else if (percentage >= 100) {
             // Full nitro blink
             this.nitroBarFill.style.backgroundImage = '';
             this.nitroBarFill.style.animation = 'blink 0.7s steps(1, end) infinite';
@@ -722,35 +740,41 @@ export class Game {
     }
 
     update(deltaTime) {
-        if (this.car && this.isGameStarted && !this.gameState.isGameOver()) {
-            this.car.update(deltaTime);
-            this.gameState.update(deltaTime, this.car.carGroup.position);
-            
-            // Update systems
-            if (this.mountains) {
-                this.mountains.update(deltaTime);
-            }
-            if (this.randomEncounters) {
-                this.randomEncounters.update(deltaTime);
-            }
-            if (this.weather) {
-                this.weather.update(deltaTime);
-            }
-            
-            // Animate fish
-            if (this.fishGroup) {
-                this.fishGroup.children.forEach(fish => {
-                    const d = fish.userData;
-                    d.angle += d.speed * deltaTime * 0.3;
-                    fish.position.x = Math.cos(d.angle) * d.r;
-                    fish.position.z = Math.sin(d.angle) * d.r;
-                    fish.position.y = 0.2 + Math.sin(Date.now() * 0.002 + d.phase) * 0.1;
-                    fish.rotation.y = -d.angle + Math.PI / 2;
-                });
-            }
-            
-            this.updateUI();
+        if (!this.isGameStarted) return;
+
+        // Update character
+        if (this.character) {
+            this.character.update(deltaTime);
+            this.character.checkVehicleInteraction();
         }
+
+        // Update active vehicle
+        if (this.activeVehicle) {
+            this.activeVehicle.update(deltaTime);
+        }
+
+        // Update game state with both positions
+        const carPosition = this.car ? this.car.carGroup.position : null;
+        const characterPosition = this.character ? this.character.characterGroup.position : null;
+        this.gameState.update(deltaTime, carPosition, characterPosition);
+
+        // Update missions
+        if (this.missionManager) {
+            this.missionManager.update();
+        }
+
+        // Update minimap
+        if (this.miniMap) {
+            this.miniMap.update();
+        }
+
+        // Update other systems
+        if (this.mountains) this.mountains.update(deltaTime);
+        if (this.randomEncounters) this.randomEncounters.update(deltaTime);
+        if (this.weather) this.weather.update(deltaTime);
+
+        // Update UI
+        this.updateUI();
     }
 
     render() {
@@ -794,5 +818,54 @@ export class Game {
             theme.fog.near,
             theme.fog.far
         );
+    }
+
+    setActiveVehicle(vehicle) {
+        this.activeVehicle = vehicle;
+        if (vehicle) {
+            // Switch to vehicle controls
+            this.camera.position.copy(vehicle.cameraOffset);
+            this.camera.lookAt(vehicle.carGroup.position);
+        } else {
+            // Switch to character controls
+            this.camera.position.copy(this.character.cameraOffset);
+            this.camera.lookAt(this.character.characterGroup.position);
+        }
+    }
+
+    getNearbyVehicles(position, radius) {
+        const vehicles = [];
+        if (this.car) {
+            const distance = position.distanceTo(this.car.carGroup.position);
+            if (distance <= radius) {
+                vehicles.push(this.car);
+            }
+        }
+        return vehicles;
+    }
+
+    updateSpeedometer() {
+        if (this.car) {
+            // Convert to km/h if needed, or just show the value
+            const speed = Math.abs(this.car.speed * 10); // Example: scale to km/h
+            this.speedElement.innerHTML = `
+                <div style="font-size: 14px; margin-bottom: 5px;">SPEED</div>
+                <div style="font-size: 36px;">${Math.round(speed)}</div>
+                <div style="font-size: 14px;">km/h</div>
+            `;
+        }
+    }
+
+    updateNitroMeter() {
+        if (this.car) {
+            let percentage = 100;
+            if (this.car.isBoosting) {
+                percentage = 100 - (this.car.boostTime / this.car.boostDuration) * 100;
+            } else if (this.car.boostCooldown > 0) {
+                percentage = (this.car.boostCooldown / this.car.boostCooldownTime) * 100;
+            }
+            this.nitroBarFill.style.backgroundColor = percentage > 60 ? '#00ff00' : percentage > 30 ? '#ffff00' : '#ff0000';
+            this.nitroBarFill.style.height = `${percentage}%`;
+        }
     }
 } 

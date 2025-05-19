@@ -1,5 +1,6 @@
 export class GameState {
-    constructor() {
+    constructor(game) {
+        this.game = game;
         this.score = 0;
         this.coins = [];
         this.coinsCollected = 0;
@@ -8,6 +9,7 @@ export class GameState {
         this.setupCoins();
         this.gameOver = false;
         this.coinValue = 100;
+        this.lastCoinCollectionTime = 0; // Add cooldown tracking
     }
 
     startGame() {
@@ -43,25 +45,38 @@ export class GameState {
         this.totalCoins = this.coins.length;
     }
 
-    update(deltaTime, carPosition) {
+    update(deltaTime, carPosition, characterPosition) {
         if (this.gameOver) return;
 
-        // Check for coin collection
-        this.checkCoinCollection(carPosition);
+        // Check for coin collection using either car or character position
+        const position = carPosition || characterPosition;
+        if (position) {
+            this.checkCoinCollection(position);
+        }
     }
 
-    checkCoinCollection(carPosition) {
+    checkCoinCollection(position) {
+        const currentTime = Date.now();
+        const COOLDOWN = 500; // 500ms cooldown between coin collections
+
         this.coins.forEach(coin => {
             if (!coin.collected) {
                 const distance = Math.sqrt(
-                    Math.pow(carPosition.x - coin.position.x, 2) +
-                    Math.pow(carPosition.z - coin.position.z, 2)
+                    Math.pow(position.x - coin.position.x, 2) +
+                    Math.pow(position.z - coin.position.z, 2)
                 );
 
-                if (distance < 3) { // Collection radius
+                if (distance < 3 && (currentTime - this.lastCoinCollectionTime) > COOLDOWN) { // Collection radius with cooldown
+                    console.log('Coin collected! Distance:', distance);
                     coin.collected = true;
                     this.coinsCollected++;
                     this.score += this.coinValue;
+                    this.lastCoinCollectionTime = currentTime;
+                    // Notify MissionManager about coin collection
+                    if (this.game && this.game.missionManager) {
+                        console.log('Notifying mission manager of coin collection');
+                        this.game.missionManager.incrementCoinMission();
+                    }
                 }
             }
         });

@@ -28,7 +28,7 @@ export class Car {
         this.isBoosting = false;
         this.boostTime = 0;
         this.boostCooldown = 0;
-        this.boostMultiplier = 2.0;
+        this.boostMultiplier = 1.25;
         this.boostDuration = 3;
         this.boostCooldownTime = 5;
         this.handling = 0.8;
@@ -573,7 +573,7 @@ export class Car {
         const input = this.inputHandler.getInput();
         
         // Handle boost
-        if (input.shift && this.boostCooldown <= 0 && !this.isBoosting && this.boostTime >= this.boostDuration) {
+        if (input.shift && this.boostCooldown <= 0 && !this.isBoosting && this.boostTime < this.boostDuration) {
             this.isBoosting = true;
             this.boostTime = 0;
             this.boostCooldown = this.boostCooldownTime;

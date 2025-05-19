@@ -8,7 +8,7 @@ export class VehicleStats {
                     acceleration: 0.3,
                     deceleration: 0.2,
                     handling: 0.8,
-                    boostMultiplier: 1.15,
+                    boostMultiplier: 1.25,
                     boostDuration: 3,
                     boostCooldown: 5
                 };
@@ -19,7 +19,7 @@ export class VehicleStats {
                     acceleration: 0.25,
                     deceleration: 0.15,
                     handling: 0.6,
-                    boostMultiplier: 1.1,
+                    boostMultiplier: 1.25,
                     boostDuration: 4,
                     boostCooldown: 6
                 };
@@ -30,7 +30,7 @@ export class VehicleStats {
                     acceleration: 0.35,
                     deceleration: 0.25,
                     handling: 0.9,
-                    boostMultiplier: 1.2,
+                    boostMultiplier: 1.25,
                     boostDuration: 2,
                     boostCooldown: 4
                 };

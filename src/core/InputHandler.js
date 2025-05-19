@@ -9,7 +9,10 @@ export class InputHandler {
             shift: false,
             attack: false,
             weapon: false,
-            dodge: false
+            dodge: false,
+            jump: false,
+            exit: false,
+            interact: false
         };
 
         this.setupEventListeners();
@@ -36,6 +39,7 @@ export class InputHandler {
                     break;
                 case ' ':
                     this.keys.brake = true;
+                    this.keys.jump = true;
                     break;
                 case 'shift':
                     this.keys.shift = true;
@@ -45,9 +49,13 @@ export class InputHandler {
                     break;
                 case 'e':
                     this.keys.weapon = true;
+                    this.keys.interact = true;
                     break;
                 case 'q':
                     this.keys.dodge = true;
+                    break;
+                case 'x':
+                    this.keys.exit = true;
                     break;
             }
         });
@@ -72,6 +80,7 @@ export class InputHandler {
                     break;
                 case ' ':
                     this.keys.brake = false;
+                    this.keys.jump = false;
                     break;
                 case 'shift':
                     this.keys.shift = false;
@@ -81,9 +90,13 @@ export class InputHandler {
                     break;
                 case 'e':
                     this.keys.weapon = false;
+                    this.keys.interact = false;
                     break;
                 case 'q':
                     this.keys.dodge = false;
+                    break;
+                case 'x':
+                    this.keys.exit = false;
                     break;
             }
         });
