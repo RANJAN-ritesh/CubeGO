@@ -3,6 +3,7 @@ import { RandomEncounters } from './entities/RandomEncounters.js';
 import { Mountains } from './entities/Mountains.js';
 import { ParticleSystem } from './effects/ParticleSystem.js';
 import * as THREE from 'three';
+import { Character } from './entities/Character.js';
 
 export class Game {
     constructor() {
@@ -41,6 +42,59 @@ export class Game {
         this.setupSpeedometer();
         this.setupNitroMeter();
         this.setupExplorationDisplay();
+        
+        // Add ammo UI
+        const ammoUI = document.createElement('div');
+        ammoUI.style.position = 'absolute';
+        ammoUI.style.top = '10px';
+        ammoUI.style.right = '10px';
+        ammoUI.style.color = 'white';
+        ammoUI.style.fontSize = '20px';
+        ammoUI.style.fontFamily = 'Arial';
+        ammoUI.textContent = 'Ammo: 30';
+        document.body.appendChild(ammoUI);
+
+        // Update ammo UI
+        this.updateAmmoUI = (ammo) => {
+            ammoUI.textContent = `Ammo: ${ammo}`;
+        };
+
+        // Initialize character
+        this.character = new Character(this.scene, this.camera);
+        
+        // Bind shooting to left mouse button
+        document.addEventListener('mousedown', (event) => {
+            if (event.button === 0) { // Left mouse button
+                this.character.shoot();
+                this.updateAmmoUI(this.character.ammo);
+            }
+        });
+
+        // Add multiple targets
+        for (let i = 0; i < 5; i++) {
+            const targetGeometry = new THREE.BoxGeometry(1, 1, 1);
+            const targetMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const target = new THREE.Mesh(targetGeometry, targetMaterial);
+            target.position.set(
+                Math.random() * 40 - 20, // Random position within bounds
+                0.5,
+                Math.random() * 40 - 20
+            );
+            this.scene.add(target);
+        }
+
+        // Add multiple ammo pickups
+        for (let i = 0; i < 3; i++) {
+            const ammoPickupGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+            const ammoPickupMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const ammoPickup = new THREE.Mesh(ammoPickupGeometry, ammoPickupMaterial);
+            ammoPickup.position.set(
+                Math.random() * 40 - 20,
+                0.2,
+                Math.random() * 40 - 20
+            );
+            this.scene.add(ammoPickup);
+        }
         
         console.log('Game initialization complete');
     }
@@ -364,4 +418,26 @@ export class Game {
             this.particleSystem.createBoostParticles(position);
         }
     }
+
+    // Ammo pickup logic
+    checkAmmoPickup = () => {
+        const distance = this.character.model.position.distanceTo(ammoPickup.position);
+        if (distance < 1) { // Adjust pickup radius as needed
+            this.character.ammo += 10; // Increase ammo by 10
+            this.updateAmmoUI(this.character.ammo);
+            ammoPickup.position.set(
+                Math.random() * 20 - 10, // Random position within bounds
+                0.2,
+                Math.random() * 20 - 10
+            );
+        }
+    };
+
+    // Game loop
+    animate = () => {
+        requestAnimationFrame(this.animate);
+        this.update();
+        this.checkAmmoPickup(); // Check for ammo pickups
+        this.renderer.render(this.scene, this.camera);
+    };
 } 
